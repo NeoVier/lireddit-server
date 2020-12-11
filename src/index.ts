@@ -20,10 +20,8 @@ declare module "express-session" {
   }
 }
 
-// TODO  - Video at 4:21
-
 const main = async () => {
-  const conn = await createConnection({
+  await createConnection({
     type: "postgres",
     database: "lireddit2",
     username: "postgres",

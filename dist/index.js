@@ -27,7 +27,7 @@ const User_1 = require("./entities/User");
 const post_1 = require("./resolvers/post");
 const user_1 = require("./resolvers/user");
 const main = () => __awaiter(void 0, void 0, void 0, function* () {
-    const conn = yield typeorm_1.createConnection({
+    yield typeorm_1.createConnection({
         type: "postgres",
         database: "lireddit2",
         username: "postgres",
