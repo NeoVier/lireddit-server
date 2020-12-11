@@ -1,4 +1,4 @@
-import { UsernamePasswordInput } from "src/resolvers/UsernamePasswordInput";
+import { UsernamePasswordInput } from "../resolvers/UsernamePasswordInput";
 import { validatePassword } from "./validatePassword";
 
 export const validateRegister = (options: UsernamePasswordInput) => {

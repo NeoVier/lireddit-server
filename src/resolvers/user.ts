@@ -8,6 +8,7 @@ import {
   Query,
   Resolver,
 } from "type-graphql";
+import { getConnection } from "typeorm";
 import { v4 } from "uuid";
 import { COOKIE_NAME, FORGET_PASWORD_PREFIX, HOSTED_AT } from "../constants";
 import { User } from "../entities/User";
@@ -39,13 +40,12 @@ class UserResponse {
 export class UserResolver {
   // QUERIES
   @Query(() => User, { nullable: true })
-  async me(@Ctx() { req, em }: MyContext): Promise<User | null> {
+  me(@Ctx() { req }: MyContext): Promise<User | undefined> | null {
     if (!req.session.userId) {
       return null;
     }
 
-    const user = await em.findOne(User, { id: req.session.userId });
-    return user;
+    return User.findOne(req.session.userId);
   }
 
   // MUTATIONS
@@ -53,7 +53,7 @@ export class UserResolver {
   async changePassword(
     @Arg("token") token: string,
     @Arg("newPassword") newPassword: string,
-    @Ctx() { redis, em, req }: MyContext
+    @Ctx() { redis, req }: MyContext
   ): Promise<UserResponse> {
     const passwordErrors = validatePassword(newPassword);
     if (passwordErrors) {
@@ -66,14 +66,15 @@ export class UserResolver {
       return { errors: [{ field: "token", message: "token expired" }] };
     }
 
-    const user = await em.findOne(User, { id: parseInt(userId) });
+    const userIdNum = parseInt(userId);
+    const user = await User.findOne(userIdNum);
     if (!user) {
       return { errors: [{ field: "token", message: "user no longer exists" }] };
     }
 
     const hashedPassword = await argon2.hash(newPassword);
     user.password = hashedPassword;
-    await em.persistAndFlush(user);
+    await User.update({ id: userIdNum }, { password: hashedPassword });
 
     await redis.del(key);
 
@@ -86,9 +87,9 @@ export class UserResolver {
   @Mutation(() => Boolean)
   async forgotPassword(
     @Arg("email") email: string,
-    @Ctx() { em, redis }: MyContext
+    @Ctx() { redis }: MyContext
   ): Promise<Boolean> {
-    const user = await em.findOne(User, { email });
+    const user = await User.findOne({ where: { email } });
 
     if (!user) {
       // email not in db
@@ -117,24 +118,30 @@ export class UserResolver {
   @Mutation(() => UserResponse)
   async register(
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { em, req }: MyContext
+    @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
     const errors = validateRegister(options);
     if (errors) {
       return { errors };
     }
 
+    let user;
     const hashedPassword = await argon2.hash(options.password);
-    const user = em.create(User, {
-      username: options.username,
-      email: options.email,
-      password: hashedPassword,
-    });
-
     try {
-      await em.persistAndFlush(user);
+      const result = await getConnection()
+        .createQueryBuilder()
+        .insert()
+        .into(User)
+        .values({
+          username: options.username,
+          email: options.email,
+          password: hashedPassword,
+        })
+        .returning("*")
+        .execute();
+      user = result.raw[0];
     } catch (err) {
-      if (err.name === "UniqueConstraintViolationException") {
+      if (err.code === "23505") {
         // Duplicate username error
         return {
           errors: [
@@ -157,13 +164,12 @@ export class UserResolver {
   async login(
     @Arg("usernameOrEmail") usernameOrEmail: string,
     @Arg("password") password: string,
-    @Ctx() { em, req }: MyContext
+    @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
-    const user = await em.findOne(
-      User,
+    const user = await User.findOne(
       usernameOrEmail.includes("@")
-        ? { email: usernameOrEmail }
-        : { username: usernameOrEmail }
+        ? { where: { email: usernameOrEmail } }
+        : { where: { username: usernameOrEmail } }
     );
 
     if (!user) {

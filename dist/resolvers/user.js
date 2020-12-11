@@ -27,6 +27,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserResolver = void 0;
 const argon2_1 = __importDefault(require("argon2"));
 const type_graphql_1 = require("type-graphql");
+const typeorm_1 = require("typeorm");
 const uuid_1 = require("uuid");
 const constants_1 = require("../constants");
 const User_1 = require("../entities/User");
@@ -61,16 +62,13 @@ UserResponse = __decorate([
     type_graphql_1.ObjectType()
 ], UserResponse);
 let UserResolver = class UserResolver {
-    me({ req, em }) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!req.session.userId) {
-                return null;
-            }
-            const user = yield em.findOne(User_1.User, { id: req.session.userId });
-            return user;
-        });
+    me({ req }) {
+        if (!req.session.userId) {
+            return null;
+        }
+        return User_1.User.findOne(req.session.userId);
     }
-    changePassword(token, newPassword, { redis, em, req }) {
+    changePassword(token, newPassword, { redis, req }) {
         return __awaiter(this, void 0, void 0, function* () {
             const passwordErrors = validatePassword_1.validatePassword(newPassword);
             if (passwordErrors) {
@@ -81,21 +79,22 @@ let UserResolver = class UserResolver {
             if (!userId) {
                 return { errors: [{ field: "token", message: "token expired" }] };
             }
-            const user = yield em.findOne(User_1.User, { id: parseInt(userId) });
+            const userIdNum = parseInt(userId);
+            const user = yield User_1.User.findOne(userIdNum);
             if (!user) {
                 return { errors: [{ field: "token", message: "user no longer exists" }] };
             }
             const hashedPassword = yield argon2_1.default.hash(newPassword);
             user.password = hashedPassword;
-            yield em.persistAndFlush(user);
+            yield User_1.User.update({ id: userIdNum }, { password: hashedPassword });
             yield redis.del(key);
             req.session.userId = user.id;
             return { user };
         });
     }
-    forgotPassword(email, { em, redis }) {
+    forgotPassword(email, { redis }) {
         return __awaiter(this, void 0, void 0, function* () {
-            const user = yield em.findOne(User_1.User, { email });
+            const user = yield User_1.User.findOne({ where: { email } });
             if (!user) {
                 return true;
             }
@@ -106,23 +105,30 @@ let UserResolver = class UserResolver {
             return true;
         });
     }
-    register(options, { em, req }) {
+    register(options, { req }) {
         return __awaiter(this, void 0, void 0, function* () {
             const errors = validateRegister_1.validateRegister(options);
             if (errors) {
                 return { errors };
             }
+            let user;
             const hashedPassword = yield argon2_1.default.hash(options.password);
-            const user = em.create(User_1.User, {
-                username: options.username,
-                email: options.email,
-                password: hashedPassword,
-            });
             try {
-                yield em.persistAndFlush(user);
+                const result = yield typeorm_1.getConnection()
+                    .createQueryBuilder()
+                    .insert()
+                    .into(User_1.User)
+                    .values({
+                    username: options.username,
+                    email: options.email,
+                    password: hashedPassword,
+                })
+                    .returning("*")
+                    .execute();
+                user = result.raw[0];
             }
             catch (err) {
-                if (err.name === "UniqueConstraintViolationException") {
+                if (err.code === "23505") {
                     return {
                         errors: [
                             {
@@ -137,11 +143,11 @@ let UserResolver = class UserResolver {
             return { user };
         });
     }
-    login(usernameOrEmail, password, { em, req }) {
+    login(usernameOrEmail, password, { req }) {
         return __awaiter(this, void 0, void 0, function* () {
-            const user = yield em.findOne(User_1.User, usernameOrEmail.includes("@")
-                ? { email: usernameOrEmail }
-                : { username: usernameOrEmail });
+            const user = yield User_1.User.findOne(usernameOrEmail.includes("@")
+                ? { where: { email: usernameOrEmail } }
+                : { where: { username: usernameOrEmail } });
             if (!user) {
                 return {
                     errors: [
@@ -184,7 +190,7 @@ __decorate([
     __param(0, type_graphql_1.Ctx()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", Promise)
+    __metadata("design:returntype", Object)
 ], UserResolver.prototype, "me", null);
 __decorate([
     type_graphql_1.Mutation(() => UserResponse),
