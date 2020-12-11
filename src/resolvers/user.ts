@@ -8,9 +8,12 @@ import {
   Query,
   Resolver,
 } from "type-graphql";
-import { COOKIE_NAME } from "../constants";
+import { v4 } from "uuid";
+import { COOKIE_NAME, FORGET_PASWORD_PREFIX, HOSTED_AT } from "../constants";
 import { User } from "../entities/User";
 import { MyContext } from "../types";
+import { sendEmail } from "../utils/sendEmail";
+import { validatePassword } from "../utils/validatePassword";
 import { validateRegister } from "../utils/validateRegister";
 import { UsernamePasswordInput } from "./UsernamePasswordInput";
 
@@ -46,11 +49,68 @@ export class UserResolver {
   }
 
   // MUTATIONS
+  @Mutation(() => UserResponse)
+  async changePassword(
+    @Arg("token") token: string,
+    @Arg("newPassword") newPassword: string,
+    @Ctx() { redis, em, req }: MyContext
+  ): Promise<UserResponse> {
+    const passwordErrors = validatePassword(newPassword);
+    if (passwordErrors) {
+      return { errors: passwordErrors };
+    }
+
+    const key = FORGET_PASWORD_PREFIX + token;
+    const userId = await redis.get(key);
+    if (!userId) {
+      return { errors: [{ field: "token", message: "token expired" }] };
+    }
+
+    const user = await em.findOne(User, { id: parseInt(userId) });
+    if (!user) {
+      return { errors: [{ field: "token", message: "user no longer exists" }] };
+    }
+
+    const hashedPassword = await argon2.hash(newPassword);
+    user.password = hashedPassword;
+    await em.persistAndFlush(user);
+
+    await redis.del(key);
+
+    // Log in user after changing password
+    req.session.userId = user.id;
+
+    return { user };
+  }
+
   @Mutation(() => Boolean)
-  async forgotPassword(): // @Arg("email") email: string,
-  // @Ctx() { em }: MyContext
-  Promise<Boolean> {
-    // const person = await em.findOne(User, { email });
+  async forgotPassword(
+    @Arg("email") email: string,
+    @Ctx() { em, redis }: MyContext
+  ): Promise<Boolean> {
+    const user = await em.findOne(User, { email });
+
+    if (!user) {
+      // email not in db
+      return true;
+    }
+
+    const token = v4();
+
+    await redis.set(
+      FORGET_PASWORD_PREFIX + token,
+      user.id,
+      "ex",
+      1000 * 60 * 60 * 24 * 3 // 3 days
+    );
+
+    await sendEmail(
+      email,
+      `<a href="${HOSTED_AT}/change-password/${token}">Reset password</a>`
+    );
+
+    console.log("SENT TOKEN", token);
+
     return true;
   }
 
@@ -111,7 +171,7 @@ export class UserResolver {
         errors: [
           {
             field: "username",
-            message: "username doesn't exist",
+            message: "username or email doesn't exist",
           },
         ],
       };
