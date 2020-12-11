@@ -19,6 +19,8 @@ declare module "express-session" {
   }
 }
 
+// TODO  - Video at 4:21
+
 const main = async () => {
   const orm = await MikroORM.init(mikroConfig);
   await orm.getMigrator().up();
