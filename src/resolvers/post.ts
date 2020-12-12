@@ -3,10 +3,13 @@ import {
   Arg,
   Ctx,
   Field,
+  FieldResolver,
   InputType,
+  Int,
   Mutation,
   Query,
   Resolver,
+  Root,
   UseMiddleware,
 } from "type-graphql";
 import { getConnection } from "typeorm";
@@ -22,11 +25,21 @@ class PostInput {
   text: string;
 }
 
-@Resolver()
+@Resolver(Post)
 export class PostResolver {
+  @FieldResolver(() => String)
+  textSnippet(@Root() root: Post) {
+    const MAX_LENGTH = 100;
+    if (root.text.length > MAX_LENGTH - 3) {
+      return root.text.slice(0, MAX_LENGTH - 3) + "...";
+    }
+    return root.text.slice(0, MAX_LENGTH);
+  }
+
+  // QUERIES
   @Query(() => [Post])
   posts(
-    @Arg("limit") limit: number,
+    @Arg("limit", () => Int) limit: number,
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null
   ): Promise<Post[]> {
     const realLimit = Math.min(50, limit);
@@ -48,6 +61,7 @@ export class PostResolver {
     return Post.findOne(id);
   }
 
+  // MUTATIONS
   @Mutation(() => Post)
   @UseMiddleware(isAuth)
   async createPost(
