@@ -17,7 +17,7 @@ const Upvote_1 = require("./Upvote");
 let User = class User extends typeorm_1.BaseEntity {
 };
 __decorate([
-    type_graphql_1.Field(),
+    type_graphql_1.Field(() => type_graphql_1.Int),
     typeorm_1.PrimaryGeneratedColumn(),
     __metadata("design:type", Number)
 ], User.prototype, "id", void 0);

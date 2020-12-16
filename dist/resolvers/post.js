@@ -65,7 +65,12 @@ let PostResolver = class PostResolver {
         return __awaiter(this, void 0, void 0, function* () {
             const realLimit = Math.min(50, limit);
             const realLimitPlusOne = realLimit + 1;
-            const replacements = [realLimitPlusOne, req.session.userId];
+            const userId = req.session.userId;
+            const replacements = [realLimitPlusOne];
+            if (userId) {
+                replacements.push(userId);
+            }
+            const cursorIdx = cursor ? replacements.length + 1 : 3;
             if (cursor) {
                 replacements.push(new Date(parseInt(cursor)));
             }
@@ -76,12 +81,12 @@ let PostResolver = class PostResolver {
       'username', u.username,
       'email', u.email
       ) creator,
-    ${req.session.userId
+    ${userId
                 ? '(select "isPositive" from upvote where "userId" = $2 and "postId" = p.id) "voteStatus"'
                 : 'null as "voteStatus"'}
     from post p
     inner join public.user u on u.id = p."creatorId"
-    ${cursor ? `where p."createdAt" < $3` : ""}
+    ${cursor ? `where p."createdAt" < $${cursorIdx}` : ""}
     order by p."createdAt" DESC
     limit $1
     `, replacements);
@@ -92,7 +97,10 @@ let PostResolver = class PostResolver {
         });
     }
     post(id) {
-        return Post_1.Post.findOne(id);
+        return __awaiter(this, void 0, void 0, function* () {
+            const post = yield Post_1.Post.findOne(id, { relations: ["creator"] });
+            return post;
+        });
     }
     vote(postId, isPositive, { req }) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -179,7 +187,7 @@ __decorate([
 ], PostResolver.prototype, "posts", null);
 __decorate([
     type_graphql_1.Query(() => Post_1.Post, { nullable: true }),
-    __param(0, type_graphql_1.Arg("id")),
+    __param(0, type_graphql_1.Arg("id", () => type_graphql_1.Int)),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number]),
     __metadata("design:returntype", Promise)

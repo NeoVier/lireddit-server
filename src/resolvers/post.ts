@@ -56,9 +56,15 @@ export class PostResolver {
   ): Promise<PaginatedPosts> {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
+    const userId = req.session.userId;
 
-    const replacements: any[] = [realLimitPlusOne, req.session.userId];
+    const replacements: any[] = [realLimitPlusOne];
 
+    if (userId) {
+      replacements.push(userId);
+    }
+
+    const cursorIdx = cursor ? replacements.length + 1 : 3;
     if (cursor) {
       replacements.push(new Date(parseInt(cursor)));
     }
@@ -72,13 +78,13 @@ export class PostResolver {
       'email', u.email
       ) creator,
     ${
-      req.session.userId
+      userId
         ? '(select "isPositive" from upvote where "userId" = $2 and "postId" = p.id) "voteStatus"'
         : 'null as "voteStatus"'
     }
     from post p
     inner join public.user u on u.id = p."creatorId"
-    ${cursor ? `where p."createdAt" < $3` : ""}
+    ${cursor ? `where p."createdAt" < $${cursorIdx}` : ""}
     order by p."createdAt" DESC
     limit $1
     `,
@@ -92,8 +98,10 @@ export class PostResolver {
   }
 
   @Query(() => Post, { nullable: true })
-  post(@Arg("id") id: number): Promise<Post | undefined> {
-    return Post.findOne(id);
+  async post(@Arg("id", () => Int) id: number): Promise<Post | undefined> {
+    // TODO - return creator
+    const post = await Post.findOne(id, { relations: ["creator"] });
+    return post;
   }
 
   // MUTATIONS
