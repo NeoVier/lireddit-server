@@ -10,6 +10,7 @@ import { buildSchema } from "type-graphql";
 import { createConnection } from "typeorm";
 import { COOKIE_NAME, HOSTED_AT, __prod__ } from "./constants";
 import { Post } from "./entities/Post";
+import { Upvote } from "./entities/Upvote";
 import { User } from "./entities/User";
 import { PostResolver } from "./resolvers/post";
 import { UserResolver } from "./resolvers/user";
@@ -30,7 +31,7 @@ const main = async () => {
     logging: true,
     synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
-    entities: [Post, User],
+    entities: [Post, User, Upvote],
   });
 
   await conn.runMigrations();

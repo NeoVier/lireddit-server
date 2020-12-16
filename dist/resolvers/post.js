@@ -25,6 +25,7 @@ exports.PostResolver = void 0;
 const type_graphql_1 = require("type-graphql");
 const typeorm_1 = require("typeorm");
 const Post_1 = require("../entities/Post");
+const Upvote_1 = require("../entities/Upvote");
 const isAuth_1 = require("../middleware/isAuth");
 let PostInput = class PostInput {
 };
@@ -64,15 +65,23 @@ let PostResolver = class PostResolver {
         return __awaiter(this, void 0, void 0, function* () {
             const realLimit = Math.min(50, limit);
             const realLimitPlusOne = realLimit + 1;
-            const qb = typeorm_1.getConnection()
-                .getRepository(Post_1.Post)
-                .createQueryBuilder("p")
-                .orderBy('"createdAt"', "DESC")
-                .take(realLimitPlusOne);
+            const replacements = [realLimitPlusOne];
             if (cursor) {
-                qb.where('"createdAt" < :cursor', { cursor: new Date(parseInt(cursor)) });
+                replacements.push(new Date(parseInt(cursor)));
             }
-            const posts = yield qb.getMany();
+            const posts = yield typeorm_1.getConnection().query(`
+    select p.*,
+    json_build_object(
+      'id', u.id,
+      'username', u.username,
+      'email', u.email
+      ) creator
+    from post p
+    inner join public.user u on u.id = p."creatorId"
+    ${cursor ? `where p."createdAt" < $2` : ""}
+    order by p."createdAt" DESC
+    limit $1
+    `, replacements);
             return {
                 posts: posts.slice(0, realLimit),
                 hasMore: posts.length === realLimitPlusOne,
@@ -81,6 +90,42 @@ let PostResolver = class PostResolver {
     }
     post(id) {
         return Post_1.Post.findOne(id);
+    }
+    vote(postId, isPositive, { req }) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const userId = req.session.userId;
+            const value = isPositive ? 1 : -1;
+            const upvote = yield Upvote_1.Upvote.findOne({ where: { postId, userId } });
+            if (upvote && upvote.isPositive != isPositive) {
+                yield typeorm_1.getConnection().transaction((tm) => __awaiter(this, void 0, void 0, function* () {
+                    yield tm.query(`
+        update upvote
+        set "isPositive" = $1
+        where "postId" = $2 and "userId" = $3
+        `, [isPositive, postId, userId]);
+                    yield tm.query(`
+          update post
+          set points = points + $1
+          where id = $2
+          `, [value * 2, postId]);
+                }));
+            }
+            else if (!upvote) {
+                yield typeorm_1.getConnection().transaction((tm) => __awaiter(this, void 0, void 0, function* () {
+                    yield tm.query(`
+    insert into upvote ("userId", "postId", "isPositive")
+    values ($1,$2,$3)
+        `, [userId, postId, isPositive]);
+                    yield tm.query(`
+        
+    update post
+    set points = points + $1
+    where id = $2
+        `, [value, postId]);
+                }));
+            }
+            return yield Post_1.Post.findOne({ id: postId });
+        });
     }
     createPost(options, { req }) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -128,6 +173,16 @@ __decorate([
     __metadata("design:paramtypes", [Number]),
     __metadata("design:returntype", Promise)
 ], PostResolver.prototype, "post", null);
+__decorate([
+    type_graphql_1.Mutation(() => Post_1.Post),
+    type_graphql_1.UseMiddleware(isAuth_1.isAuth),
+    __param(0, type_graphql_1.Arg("postId", () => type_graphql_1.Int)),
+    __param(1, type_graphql_1.Arg("isPositive", () => Boolean)),
+    __param(2, type_graphql_1.Ctx()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Boolean, Object]),
+    __metadata("design:returntype", Promise)
+], PostResolver.prototype, "vote", null);
 __decorate([
     type_graphql_1.Mutation(() => Post_1.Post),
     type_graphql_1.UseMiddleware(isAuth_1.isAuth),
