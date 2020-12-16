@@ -31,6 +31,9 @@ export class Post extends BaseEntity {
   @Column({ type: "int", default: 0 })
   points!: number;
 
+  @Field(() => Boolean, { nullable: true })
+  voteStatus: boolean | null;
+
   @Field()
   @Column()
   creatorId: number;
