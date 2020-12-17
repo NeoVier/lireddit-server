@@ -53,38 +53,42 @@ export class PostResolver {
     return userLoader.load(post.creatorId);
   }
 
+  @FieldResolver(() => Boolean, { nullable: true })
+  async voteStatus(
+    @Root() post: Post,
+    @Ctx() { upvoteLoader, req }: MyContext
+  ): Promise<boolean | null> {
+    if (!req.session.userId) {
+      return null;
+    }
+    const upvote = await upvoteLoader.load({
+      postId: post.id,
+      userId: req.session.userId,
+    });
+
+    return upvote ? upvote.isPositive : null;
+  }
+
   // QUERIES
   @Query(() => PaginatedPosts)
   async posts(
     @Arg("limit", () => Int) limit: number,
-    @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
-    @Ctx() { req }: MyContext
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null
   ): Promise<PaginatedPosts> {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
-    const userId = req.session.userId;
 
     const replacements: any[] = [realLimitPlusOne];
 
-    if (userId) {
-      replacements.push(userId);
-    }
-
-    const cursorIdx = cursor ? replacements.length + 1 : 3;
     if (cursor) {
       replacements.push(new Date(parseInt(cursor)));
     }
 
     const posts = await getConnection().query(
       `
-    select p.*,
-    ${
-      userId
-        ? '(select "isPositive" from upvote where "userId" = $2 and "postId" = p.id) "voteStatus"'
-        : 'null as "voteStatus"'
-    }
+    select p.*
     from post p
-    ${cursor ? `where p."createdAt" < $${cursorIdx}` : ""}
+    ${cursor ? `where p."createdAt" < $2` : ""}
     order by p."createdAt" DESC
     limit $1
     `,
