@@ -12,7 +12,7 @@ import {
 } from "type-graphql";
 import { getConnection } from "typeorm";
 import { v4 } from "uuid";
-import { COOKIE_NAME, FORGET_PASWORD_PREFIX, HOSTED_AT } from "../constants";
+import { COOKIE_NAME, FORGET_PASWORD_PREFIX } from "../constants";
 import { User } from "../entities/User";
 import { MyContext } from "../types";
 import { sendEmail } from "../utils/sendEmail";
@@ -120,7 +120,7 @@ export class UserResolver {
 
     await sendEmail(
       email,
-      `<a href="${HOSTED_AT}/change-password/${token}">Reset password</a>`
+      `<a href="${process.env.CORS_ORIGIN}/change-password/${token}">Reset password</a>`
     );
 
     console.log("SENT TOKEN", token);
