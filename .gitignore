@@ -101,3 +101,4 @@ tests/cases/user/prettier/prettier
 dist
 dist/*
 .env
+.env.production
