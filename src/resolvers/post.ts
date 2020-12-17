@@ -99,7 +99,6 @@ export class PostResolver {
 
   @Query(() => Post, { nullable: true })
   async post(@Arg("id", () => Int) id: number): Promise<Post | undefined> {
-    // TODO - return creator
     const post = await Post.findOne(id, { relations: ["creator"] });
     return post;
   }
@@ -191,7 +190,7 @@ export class PostResolver {
   @Mutation(() => Post, { nullable: true })
   @UseMiddleware(isAuth)
   async updatePost(
-    @Arg("id") id: number,
+    @Arg("id", () => Int) id: number,
     @Arg("title") title: string,
     @Arg("text") text: string,
     @Ctx() { req }: MyContext
