@@ -63,7 +63,7 @@ const main = async () => {
         httpOnly: true,
         sameSite: "lax",
         secure: __prod__, // cookie only works in https
-        // domain: __prod__ ? ".codeponder.com" : undefined, // Replace codeponder
+        domain: __prod__ ? ".henriquebuss.me" : undefined,
       },
       saveUninitialized: false,
       secret: process.env.SESSION_SECRET,
